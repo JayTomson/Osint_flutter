@@ -1,0 +1,27 @@
+name: osint_v
+description: OSINT data collection app
+publish_to: "none"
+version: 1.1.0+2
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  path_provider: ^2.1.4
+  shared_preferences: ^2.3.2
+  file_picker: ^8.1.2
+  share_plus: ^10.0.2
+  url_launcher: ^6.3.1
+  open_filex: ^4.5.0
+  uuid: ^4.5.1
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  pdf: ^3.11.1
+  printing: ^5.13.4
+  sqflite: ^2.3.3
+
+flutter:
+  uses-material-design: true

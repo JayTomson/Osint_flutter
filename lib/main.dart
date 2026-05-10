@@ -180,6 +180,10 @@ class L10n {
       'found_in': 'Found in',
       'edit_case_tags': 'Edit case tags',
       'case_tags_hint': 'tag1, tag2',
+      'case_label': 'Case',
+      'exp_export_map_png': 'Export map as PNG (save / share)',
+      'exp_export_map_png_desc': 'Save or share the map with all markers as a PNG image. Works for a single target and for the entire case map.',
+      'export_map_png': 'Export map (PNG)',
     },
     'ru': {
       'app_title': 'OSINT V',
@@ -317,6 +321,10 @@ class L10n {
       'found_in': 'Найдено в',
       'edit_case_tags': 'Теги дела',
       'case_tags_hint': 'тег1, тег2',
+      'case_label': 'Дело',
+      'exp_export_map_png': 'Экспорт карты как PNG (сохранить / поделиться)',
+      'exp_export_map_png_desc': 'Сохранить или поделиться картой с метками как PNG-изображением. Работает для одного человека и для всего дела.',
+      'export_map_png': 'Экспорт карты (PNG)',
     },
   };
 
@@ -392,9 +400,9 @@ class SearchHit {
   const SearchHit({required this.location, required this.snippet});
 }
 
-SearchHit? findPersonHit(Person p, String query) {
+List<SearchHit> findPersonHits(Person p, String query) {
   final q = query.toLowerCase().trim();
-  if (q.isEmpty) return null;
+  if (q.isEmpty) return [];
 
   String _snip(String text) {
     final lower = text.toLowerCase();
@@ -407,56 +415,68 @@ SearchHit? findPersonHit(Person p, String query) {
     return text.length > 60 ? '${text.substring(0, 57)}…' : text;
   }
 
-  // Name/surname/patronymic matches are shown in the card itself, skip
-  // but still use them for matching to make it a hit:
+  // Name matches are already visible on the card — skip them as hit badges.
   if (FuzzySearch.matches(q, p.name) ||
       FuzzySearch.matches(q, p.surname) ||
       FuzzySearch.matches(q, p.patronymic)) {
-    return null; // name is already visible on the card
+    return [];
   }
 
-  if (p.notes.isNotEmpty && FuzzySearch.matches(q, p.notes)) {
-    return SearchHit(location: tr('notes'), snippet: _snip(p.notes));
-  }
+  final hits = <SearchHit>[];
 
+  // Tags (priority 1)
   for (final t in p.tags) {
     if (FuzzySearch.matches(q, t)) {
-      return SearchHit(location: tr('tags'), snippet: t);
+      hits.add(SearchHit(location: tr('tags'), snippet: t));
     }
   }
 
+  // Categories & key-values (priority 2)
   for (final c in p.categories) {
     if (FuzzySearch.matches(q, c.name)) {
-      return SearchHit(location: 'Категории', snippet: c.name);
+      hits.add(SearchHit(location: tr('connections'), snippet: c.name));
     }
     for (final kv in c.entries) {
       if (FuzzySearch.matches(q, kv.key)) {
-        return SearchHit(location: c.name, snippet: kv.key);
+        hits.add(SearchHit(location: c.name, snippet: kv.key));
       }
       if (kv.value.isNotEmpty && FuzzySearch.matches(q, kv.value)) {
-        return SearchHit(
+        hits.add(SearchHit(
           location: '${c.name}${kv.key.isNotEmpty ? " → ${kv.key}" : ""}',
           snippet: _snip(kv.value),
-        );
+        ));
       }
     }
   }
 
+  // Notes (priority 3)
+  if (p.notes.isNotEmpty && FuzzySearch.matches(q, p.notes)) {
+    hits.add(SearchHit(location: tr('notes'), snippet: _snip(p.notes)));
+  }
+
+  // Evidence (priority 4)
   for (final ev in p.evidence) {
     if (ev.description.isNotEmpty && FuzzySearch.matches(q, ev.description)) {
-      return SearchHit(location: tr('evidence'), snippet: _snip(ev.description));
+      hits.add(SearchHit(location: tr('evidence'), snippet: _snip(ev.description)));
     }
   }
 
+  // Connections (priority 5)
   for (final conn in p.connections) {
     for (final r in conn.reasons) {
       if (FuzzySearch.matches(q, r)) {
-        return SearchHit(location: tr('connections'), snippet: r);
+        hits.add(SearchHit(location: tr('connections'), snippet: r));
       }
     }
   }
 
-  return null;
+  return hits;
+}
+
+// Keep old single-hit wrapper for backward compat
+SearchHit? findPersonHit(Person p, String query) {
+  final hits = findPersonHits(p, query);
+  return hits.isEmpty ? null : hits.first;
 }
 
 bool personMatchesQuery(Person p, String query) {
@@ -718,6 +738,7 @@ class ExperimentalFeatures {
   bool exportGraphPng;
   bool caseTags;
   bool casePdf;
+  bool exportMapPng;
 
   ExperimentalFeatures({
     this.priority = false,
@@ -725,6 +746,7 @@ class ExperimentalFeatures {
     this.exportGraphPng = false,
     this.caseTags = false,
     this.casePdf = false,
+    this.exportMapPng = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -733,6 +755,7 @@ class ExperimentalFeatures {
         'exportGraphPng': exportGraphPng,
         'caseTags': caseTags,
         'casePdf': casePdf,
+        'exportMapPng': exportMapPng,
       };
 
   factory ExperimentalFeatures.fromJson(Map<String, dynamic> j) =>
@@ -742,6 +765,7 @@ class ExperimentalFeatures {
         exportGraphPng: j['exportGraphPng'] as bool? ?? false,
         caseTags: j['caseTags'] as bool? ?? false,
         casePdf: j['casePdf'] as bool? ?? false,
+        exportMapPng: j['exportMapPng'] as bool? ?? false,
       );
 }
 
@@ -831,11 +855,16 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Timer? _saveTimer;
+
   Future<void> persist() async {
-    final data = {'cases': cases.map((c) => c.toJson()).toList()};
-    await _dataFile.writeAsString(jsonEncode(data));
-    await _prefs.setString('settings', jsonEncode(settings.toJson()));
     notifyListeners();
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 600), () async {
+      final data = {'cases': cases.map((c) => c.toJson()).toList()};
+      await _dataFile.writeAsString(jsonEncode(data));
+      await _prefs.setString('settings', jsonEncode(settings.toJson()));
+    });
   }
 
   Future<void> persistSettingsOnly() async {
@@ -1171,8 +1200,8 @@ class OsintApp extends StatelessWidget {
 class _CaseMatch {
   final CaseFile caseFile;
   final String? hitPersonName;
-  final SearchHit? personHit;
-  const _CaseMatch(this.caseFile, {this.hitPersonName, this.personHit});
+  final List<SearchHit> personHits;
+  const _CaseMatch(this.caseFile, {this.hitPersonName, this.personHits = const []});
 }
 
 class HomeScreen extends StatefulWidget {
@@ -1183,6 +1212,13 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String _query = '';
+  Timer? _debounce;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
 
   List<_CaseMatch> get _filtered {
     final q = _query.trim().toLowerCase();
@@ -1209,17 +1245,17 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       // Search through people
       Person? matchedPerson;
-      SearchHit? hit;
+      List<SearchHit> hits = [];
       for (final p in c.people) {
         if (personMatchesQuery(p, q)) {
           matchedPerson = p;
-          hit = findPersonHit(p, q);
+          hits = findPersonHits(p, q);
           break;
         }
       }
       if (matchedPerson != null) {
         result.add(_CaseMatch(c,
-            hitPersonName: matchedPerson.fullName, personHit: hit));
+            hitPersonName: matchedPerson.fullName, personHits: hits));
       }
     }
     return result;
@@ -1257,7 +1293,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         borderRadius: BorderRadius.circular(14)),
                     isDense: true,
                   ),
-                  onChanged: (v) => setState(() => _query = v),
+                  onChanged: (v) {
+                    _debounce?.cancel();
+                    _debounce = Timer(const Duration(milliseconds: 350), () {
+                      if (mounted) setState(() => _query = v);
+                    });
+                  },
                 ),
               ),
               Expanded(
@@ -1281,6 +1322,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           caseMatch: list[i],
                           query: _query.trim().isEmpty ? null : _query.trim(),
                         ),
+
                       ),
               ),
             ],
@@ -1514,7 +1556,7 @@ class _CaseCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       _SearchHitBadge(
                         personName: caseMatch.hitPersonName!,
-                        hit: caseMatch.personHit,
+                        hits: caseMatch.personHits,
                         query: query ?? '',
                       ),
                     ],
@@ -1532,14 +1574,15 @@ class _CaseCard extends StatelessWidget {
 
 class _SearchHitBadge extends StatelessWidget {
   final String personName;
-  final SearchHit? hit;
+  final List<SearchHit> hits;
   final String query;
   const _SearchHitBadge(
-      {required this.personName, required this.hit, required this.query});
+      {required this.personName, required this.hits, required this.query});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final top = hits.take(2).toList();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
@@ -1557,12 +1600,12 @@ class _SearchHitBadge extends StatelessWidget {
               color: theme.colorScheme.secondary,
             ),
           ),
-          if (hit != null) ...[
+          for (final hit in top) ...[
             Text(
-              hit!.location,
+              hit.location,
               style: const TextStyle(fontSize: 10, color: Colors.grey),
             ),
-            _HighlightText(text: hit!.snippet, query: query),
+            _HighlightText(text: hit.snippet, query: query),
           ],
         ],
       ),
@@ -1616,8 +1659,8 @@ class _HighlightText extends StatelessWidget {
 
 class _PersonMatch {
   final Person person;
-  final SearchHit? hit;
-  const _PersonMatch(this.person, this.hit);
+  final List<SearchHit> hits;
+  const _PersonMatch(this.person, this.hits);
 }
 
 class CaseScreen extends StatefulWidget {
@@ -1629,15 +1672,22 @@ class CaseScreen extends StatefulWidget {
 
 class _CaseScreenState extends State<CaseScreen> {
   String _query = '';
+  Timer? _debounce;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
 
   CaseFile? get _case => AppState.instance.findCase(widget.caseId);
 
   List<_PersonMatch> _filtered(CaseFile c) {
     final q = _query.trim().toLowerCase();
-    if (q.isEmpty) return c.people.map((p) => _PersonMatch(p, null)).toList();
+    if (q.isEmpty) return c.people.map((p) => _PersonMatch(p, const [])).toList();
     return c.people
         .where((p) => personMatchesQuery(p, q))
-        .map((p) => _PersonMatch(p, findPersonHit(p, q)))
+        .map((p) => _PersonMatch(p, findPersonHits(p, q)))
         .toList();
   }
 
@@ -1707,7 +1757,12 @@ class _CaseScreenState extends State<CaseScreen> {
                         borderRadius: BorderRadius.circular(14)),
                     isDense: true,
                   ),
-                  onChanged: (v) => setState(() => _query = v),
+                  onChanged: (v) {
+                    _debounce?.cancel();
+                    _debounce = Timer(const Duration(milliseconds: 350), () {
+                      if (mounted) setState(() => _query = v);
+                    });
+                  },
                 ),
               ),
               Expanded(
@@ -1730,7 +1785,7 @@ class _CaseScreenState extends State<CaseScreen> {
                         itemBuilder: (context, i) => _PersonCard(
                           caseId: c.id,
                           person: list[i].person,
-                          hit: list[i].hit,
+                          hits: list[i].hits,
                           query: _query.trim().isEmpty ? null : _query.trim(),
                         ),
                       ),
@@ -1861,12 +1916,12 @@ class _CaseScreenState extends State<CaseScreen> {
 class _PersonCard extends StatefulWidget {
   final String caseId;
   final Person person;
-  final SearchHit? hit;
+  final List<SearchHit> hits;
   final String? query;
   const _PersonCard({
     required this.caseId,
     required this.person,
-    this.hit,
+    this.hits = const [],
     this.query,
   });
 
@@ -2075,8 +2130,8 @@ class _PersonCardState extends State<_PersonCard> {
                           ),
                       ],
                     ),
-                    // Search hit badge
-                    if (widget.hit != null && widget.query != null && widget.query!.isNotEmpty) ...[
+                    // Search hit badge — show up to 2 hits
+                    if (widget.hits.isNotEmpty && widget.query != null && widget.query!.isNotEmpty) ...[
                       const SizedBox(height: 5),
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -2089,16 +2144,19 @@ class _PersonCardState extends State<_PersonCard> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              '${tr("found_in")}: ${widget.hit!.location}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: theme.colorScheme.secondary,
+                            for (final hit in widget.hits.take(2)) ...[
+                              Text(
+                                '${tr("found_in")}: ${hit.location}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.secondary,
+                                ),
                               ),
-                            ),
-                            _HighlightText(
-                                text: widget.hit!.snippet, query: widget.query!),
+                              _HighlightText(
+                                  text: hit.snippet, query: widget.query!),
+                              const SizedBox(height: 2),
+                            ],
                           ],
                         ),
                       ),
@@ -3190,13 +3248,20 @@ class _FileTile extends StatelessWidget {
 // MAP TAB (per-person, all coordinates from kv values)
 // ============================================================================
 
-class _MapTab extends StatelessWidget {
+class _MapTab extends StatefulWidget {
   final Person person;
   const _MapTab({required this.person});
+  @override
+  State<_MapTab> createState() => _MapTabState();
+}
+
+class _MapTabState extends State<_MapTab> {
+  final _mapController = MapController();
+  final _repaintKey = GlobalKey();
 
   List<({LatLng pt, String label})> _collect() {
     final out = <({LatLng pt, String label})>[];
-    for (final c in person.categories) {
+    for (final c in widget.person.categories) {
       for (final kv in c.entries) {
         final pt = ValueDetector.extractCoord(kv.value);
         if (pt != null) {
@@ -3208,54 +3273,119 @@ class _MapTab extends StatelessWidget {
     return out;
   }
 
+  void _fitMarkers(List<({LatLng pt, String label})> markers) {
+    if (markers.isEmpty) return;
+    if (markers.length == 1) {
+      _mapController.move(markers.first.pt, 14);
+      return;
+    }
+    double minLat = markers.first.pt.latitude;
+    double maxLat = markers.first.pt.latitude;
+    double minLng = markers.first.pt.longitude;
+    double maxLng = markers.first.pt.longitude;
+    for (final m in markers) {
+      if (m.pt.latitude < minLat) minLat = m.pt.latitude;
+      if (m.pt.latitude > maxLat) maxLat = m.pt.latitude;
+      if (m.pt.longitude < minLng) minLng = m.pt.longitude;
+      if (m.pt.longitude > maxLng) maxLng = m.pt.longitude;
+    }
+    final center = LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
+    _mapController.move(center, 11);
+  }
+
+  Future<void> _exportPng(List<({LatLng pt, String label})> markers) async {
+    try {
+      final boundary = _repaintKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary == null) return;
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return;
+      final bytes = byteData.buffer.asUint8List();
+      final f = File(
+          '${AppState.instance.docsDir.path}/map_${DateTime.now().millisecondsSinceEpoch}.png');
+      await f.writeAsBytes(bytes);
+      await Share.shareXFiles([XFile(f.path)], text: 'OSINT V Map');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export error: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final markers = _collect();
+    final exp = AppState.instance.settings.experimental;
     if (markers.isEmpty) {
       return Center(
         child: Text(tr('no_target_marker'),
             style: const TextStyle(color: Colors.grey)),
       );
     }
-    final center = markers.first.pt;
-    return FlutterMap(
-      options: MapOptions(initialCenter: center, initialZoom: 6),
+    return Stack(
       children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'osint_v',
-        ),
-        MarkerLayer(
-          markers: [
-            for (final m in markers)
-              Marker(
-                point: m.pt,
-                width: 160,
-                height: 60,
-                alignment: Alignment.topCenter,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.location_on,
-                        color: Colors.red, size: 36),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(m.label,
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 11),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                  ],
-                ),
+        RepaintBoundary(
+          key: _repaintKey,
+          child: FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: markers.first.pt,
+              initialZoom: markers.length == 1 ? 14 : 10,
+              onMapReady: () => _fitMarkers(markers),
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'osint_v',
               ),
-          ],
+              MarkerLayer(
+                markers: [
+                  for (final m in markers)
+                    Marker(
+                      point: m.pt,
+                      width: 160,
+                      height: 60,
+                      alignment: Alignment.topCenter,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.location_on,
+                              color: Colors.red, size: 36),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(m.label,
+                                style: const TextStyle(
+                                    color: Colors.white, fontSize: 11),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
         ),
+        if (exp.exportMapPng)
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: FloatingActionButton.small(
+              heroTag: 'mapTabPngFab',
+              tooltip: tr('export_map_png'),
+              onPressed: () => _exportPng(markers),
+              child: const Icon(Icons.image_outlined),
+            ),
+          ),
       ],
     );
   }
@@ -3320,12 +3450,19 @@ class SingleMarkerMapScreen extends StatelessWidget {
 // GLOBAL MAP SCREEN — all targets' coordinates in a case
 // ============================================================================
 
-class GlobalMapScreen extends StatelessWidget {
+class GlobalMapScreen extends StatefulWidget {
   final String caseId;
   const GlobalMapScreen({super.key, required this.caseId});
+  @override
+  State<GlobalMapScreen> createState() => _GlobalMapScreenState();
+}
+
+class _GlobalMapScreenState extends State<GlobalMapScreen> {
+  final _mapController = MapController();
+  final _repaintKey = GlobalKey();
 
   List<({LatLng pt, String label, String personName})> _collectAll() {
-    final c = AppState.instance.findCase(caseId);
+    final c = AppState.instance.findCase(widget.caseId);
     if (c == null) return [];
     final out = <({LatLng pt, String label, String personName})>[];
     for (final person in c.people) {
@@ -3346,13 +3483,64 @@ class GlobalMapScreen extends StatelessWidget {
     return out;
   }
 
+  void _fitAll(List<({LatLng pt, String label, String personName})> markers) {
+    if (markers.isEmpty) return;
+    if (markers.length == 1) {
+      _mapController.move(markers.first.pt, 13);
+      return;
+    }
+    double minLat = markers.first.pt.latitude;
+    double maxLat = markers.first.pt.latitude;
+    double minLng = markers.first.pt.longitude;
+    double maxLng = markers.first.pt.longitude;
+    for (final m in markers) {
+      if (m.pt.latitude < minLat) minLat = m.pt.latitude;
+      if (m.pt.latitude > maxLat) maxLat = m.pt.latitude;
+      if (m.pt.longitude < minLng) minLng = m.pt.longitude;
+      if (m.pt.longitude > maxLng) maxLng = m.pt.longitude;
+    }
+    final center = LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
+    _mapController.move(center, 9);
+  }
+
+  Future<void> _exportPng() async {
+    try {
+      final boundary = _repaintKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary == null) return;
+      final image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return;
+      final bytes = byteData.buffer.asUint8List();
+      final f = File(
+          '${AppState.instance.docsDir.path}/case_map_${DateTime.now().millisecondsSinceEpoch}.png');
+      await f.writeAsBytes(bytes);
+      await Share.shareXFiles([XFile(f.path)], text: 'OSINT V Case Map');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export error: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final c = AppState.instance.findCase(caseId);
+    final c = AppState.instance.findCase(widget.caseId);
     final markers = _collectAll();
+    final exp = AppState.instance.settings.experimental;
     return Scaffold(
       appBar: AppBar(
         title: Text('${tr("global_case_map")} — ${c?.name ?? ""}'),
+        actions: [
+          if (exp.exportMapPng && markers.isNotEmpty)
+            IconButton(
+              tooltip: tr('export_map_png'),
+              icon: const Icon(Icons.image_outlined),
+              onPressed: _exportPng,
+            ),
+        ],
       ),
       body: markers.isEmpty
           ? Center(
@@ -3365,33 +3553,38 @@ class GlobalMapScreen extends StatelessWidget {
                 ),
               ),
             )
-          : FlutterMap(
-              options: MapOptions(
-                initialCenter: markers.first.pt,
-                initialZoom: 5,
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate:
-                      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'osint_v',
+          : RepaintBoundary(
+              key: _repaintKey,
+              child: FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: markers.first.pt,
+                  initialZoom: markers.length == 1 ? 13 : 7,
+                  onMapReady: () => _fitAll(markers),
                 ),
-                MarkerLayer(
-                  markers: [
-                    for (final m in markers)
-                      Marker(
-                        point: m.pt,
-                        width: 180,
-                        height: 70,
-                        alignment: Alignment.topCenter,
-                        child: _GlobalMarker(
-                          label: m.label,
-                          personName: m.personName,
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'osint_v',
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      for (final m in markers)
+                        Marker(
+                          point: m.pt,
+                          width: 180,
+                          height: 70,
+                          alignment: Alignment.topCenter,
+                          child: _GlobalMarker(
+                            label: m.label,
+                            personName: m.personName,
+                          ),
                         ),
-                      ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
     );
   }
@@ -3729,6 +3922,16 @@ class _ExperimentalFeaturesScreenState
             value: exp.caseTags,
             onChanged: (v) {
               exp.caseTags = v;
+              _save();
+            },
+          ),
+          _FeatureTile(
+            icon: Icons.map_outlined,
+            title: tr('exp_export_map_png'),
+            subtitle: tr('exp_export_map_png_desc'),
+            value: exp.exportMapPng,
+            onChanged: (v) {
+              exp.exportMapPng = v;
               _save();
             },
           ),
@@ -4604,7 +4807,7 @@ class PdfBuilder {
         theme: pw.ThemeData.withFont(base: baseFont, bold: boldFont),
         build: (ctx) {
           final widgets = <pw.Widget>[
-            pw.Text('${tr('cases')}: ${caseFile.name}', style: ts(11)),
+            pw.Text('${tr('case_label')}: ${caseFile.name}', style: ts(11)),
             pw.SizedBox(height: 4),
             pw.Text(p.fullName, style: ts(22, bold: true)),
             pw.Divider(),

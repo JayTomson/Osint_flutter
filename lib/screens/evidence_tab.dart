@@ -235,7 +235,7 @@ class _FileTile extends StatelessWidget {
           style: const TextStyle(fontSize: 12),
           overflow: TextOverflow.ellipsis),
       subtitle: exists ? null : Text(tr('file_missing'), style: const TextStyle(color: Colors.red, fontSize: 11)),
-      onTap: exists ? () => OpenFile.open(path) : null,
+      onTap: exists ? () => OpenFilex.open(path) : null,
       trailing: IconButton(
         icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
         onPressed: onDelete,

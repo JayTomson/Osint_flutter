@@ -71,6 +71,35 @@ class EvidenceItem {
       );
 }
 
+class EvidenceFile {
+  String id;
+  String path;
+  String name;
+  String mimeType;
+  String note;
+  EvidenceFile({
+    String? id,
+    required this.path,
+    required this.name,
+    this.mimeType = 'application/octet-stream',
+    this.note = '',
+  }) : id = id ?? _uuid.v4();
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'path': path,
+        'name': name,
+        'mime': mimeType,
+        'note': note,
+      };
+  factory EvidenceFile.fromJson(Map<String, dynamic> j) => EvidenceFile(
+        id: j['id'],
+        path: j['path'] ?? '',
+        name: j['name'] ?? '',
+        mimeType: j['mime'] ?? 'application/octet-stream',
+        note: j['note'] ?? '',
+      );
+}
+
 enum Priority { high, medium, low }
 
 extension PriorityExt on Priority {
@@ -107,6 +136,7 @@ class Person {
   List<CategoryBlock> categories;
   List<ConnectionLink> connections;
   List<EvidenceItem> evidence;
+  List<EvidenceFile> evidenceFiles;
   Priority? priority;
 
   Person({
@@ -119,12 +149,14 @@ class Person {
     List<CategoryBlock>? categories,
     List<ConnectionLink>? connections,
     List<EvidenceItem>? evidence,
+    List<EvidenceFile>? evidenceFiles,
     this.priority,
   })  : id = id ?? _uuid.v4(),
         tags = tags ?? [],
         categories = categories ?? [],
         connections = connections ?? [],
-        evidence = evidence ?? [];
+        evidence = evidence ?? [],
+        evidenceFiles = evidenceFiles ?? [];
 
   String get fullName {
     final parts = [name, surname, patronymic].where((s) => s.isNotEmpty).toList();
@@ -147,6 +179,7 @@ class Person {
         'categories': categories.map((e) => e.toJson()).toList(),
         'connections': connections.map((e) => e.toJson()).toList(),
         'evidence': evidence.map((e) => e.toJson()).toList(),
+        'evidenceFiles': evidenceFiles.map((e) => e.toJson()).toList(),
         'priority': priority?.name,
       };
 
@@ -165,6 +198,9 @@ class Person {
             .toList(),
         evidence: ((j['evidence'] as List?) ?? [])
             .map((e) => EvidenceItem.fromJson(e))
+            .toList(),
+        evidenceFiles: ((j['evidenceFiles'] as List?) ?? [])
+            .map((e) => EvidenceFile.fromJson(e))
             .toList(),
         priority: j['priority'] != null
             ? Priority.values.firstWhere(

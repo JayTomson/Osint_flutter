@@ -42,7 +42,7 @@ class _ConnectionsTabState extends State<_ConnectionsTab> {
                   ),
                   title: Text(other?.fullName ?? '???'),
                   subtitle: link.reasons.isEmpty
-                      ? Text(tr('reasons'))
+                      ? null
                       : Text(link.reasons.join('\n')),
                   isThreeLine: link.reasons.length > 1,
                   onTap: () {
@@ -64,7 +64,13 @@ class _ConnectionsTabState extends State<_ConnectionsTab> {
                       } else if (v == 'delete') {
                         final ok = await showDeleteDialog(context);
                         if (ok == true) {
+                          // Remove from this person
                           setState(() => p.connections.removeAt(i));
+                          // Also remove the reverse link from the other person
+                          if (other != null) {
+                            other.connections.removeWhere(
+                                (c) => c.targetPersonId == p.id);
+                          }
                           await widget.onChange();
                         }
                       }
@@ -115,6 +121,7 @@ class _ConnectionsTabState extends State<_ConnectionsTab> {
     final ok = await _editLinkDialog(link, picked);
     if (ok) {
       setState(() => widget.person.connections.add(link));
+      // Add reverse link if not already present
       final alreadyLinked = picked.connections
           .any((c) => c.targetPersonId == widget.person.id);
       if (!alreadyLinked) {

@@ -26,7 +26,7 @@ class _MapTab extends StatelessWidget {
     final coords = _collectCoords();
     if (coords.isEmpty) {
       return Center(
-        child: Text(tr('no_coords_yet'),
+        child: Text(tr('no_target_marker'),
             style: const TextStyle(color: Colors.grey)),
       );
     }
@@ -41,7 +41,7 @@ class _MapTab extends StatelessWidget {
     return FlutterMap(
       options: MapOptions(
         initialCenter: center,
-        initialZoom: coords.length == 1 ? 13 : 9,
+        initialZoom: coords.length == 1 ? 15 : 11,
       ),
       children: [
         TileLayer(
@@ -53,14 +53,13 @@ class _MapTab extends StatelessWidget {
             for (final c in coords)
               Marker(
                 point: c.pt,
-                width: 180,
-                height: 68,
-                alignment: Alignment.topCenter,
+                width: 160,
+                height: 60,
+                // bottomCenter → острие иконки (низ) стоит точно на координате
+                alignment: Alignment.bottomCenter,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.location_on,
-                        color: Colors.red, size: 34),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 2),
@@ -76,6 +75,8 @@ class _MapTab extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    const Icon(Icons.location_on,
+                        color: Colors.red, size: 34),
                   ],
                 ),
               ),

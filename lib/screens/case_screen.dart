@@ -278,7 +278,7 @@ class _PersonCard extends StatefulWidget {
 
 class _PersonCardState extends State<_PersonCard> {
   Future<void> _quickSetPriority(BuildContext context) async {
-    const _noneKey = 'none';
+    const noneKey = 'none';
     final result = await showModalBottomSheet<Object>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -289,26 +289,28 @@ class _PersonCardState extends State<_PersonCard> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: Text(
                 tr('set_priority'),
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
             const Divider(height: 1),
             ListTile(
-              leading: const Icon(Icons.remove_circle_outline, color: Colors.grey),
+              leading:
+                  const Icon(Icons.remove_circle_outline, color: Colors.grey),
               title: Text(tr('priority_none')),
-              onTap: () => Navigator.pop(ctx, _noneKey),
+              onTap: () => Navigator.pop(ctx, noneKey),
               trailing: widget.person.priority == null
                   ? const Icon(Icons.check, color: Colors.green)
                   : null,
             ),
             ...Priority.values.map((p) => ListTile(
-              leading: Icon(Icons.circle, size: 14, color: p.color),
-              title: Text(p.label),
-              onTap: () => Navigator.pop(ctx, p),
-              trailing: widget.person.priority == p
-                  ? const Icon(Icons.check, color: Colors.green)
-                  : null,
-            )),
+                  leading: Icon(Icons.circle, size: 14, color: p.color),
+                  title: Text(p.label),
+                  onTap: () => Navigator.pop(ctx, p),
+                  trailing: widget.person.priority == p
+                      ? const Icon(Icons.check, color: Colors.green)
+                      : null,
+                )),
             const SizedBox(height: 8),
           ],
         ),
@@ -316,7 +318,7 @@ class _PersonCardState extends State<_PersonCard> {
     );
 
     if (result == null) return;
-    final newPriority = result == _noneKey ? null : result as Priority;
+    final newPriority = result == noneKey ? null : result as Priority;
     widget.person.priority = newPriority;
     await AppState.instance.persist();
     if (mounted) setState(() {});
@@ -327,6 +329,8 @@ class _PersonCardState extends State<_PersonCard> {
     final theme = Theme.of(context);
     final exp = AppState.instance.settings.experimental;
     final person = widget.person;
+    final connCount = person.connections.length;
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
       child: InkWell(
@@ -345,8 +349,8 @@ class _PersonCardState extends State<_PersonCard> {
             if (c == null) return;
             c.people.removeWhere((p) => p.id == person.id);
             for (final p in c.people) {
-              p.connections.removeWhere(
-                  (link) => link.targetPersonId == person.id);
+              p.connections
+                  .removeWhere((link) => link.targetPersonId == person.id);
             }
             await AppState.instance.persist();
           }
@@ -413,13 +417,16 @@ class _PersonCardState extends State<_PersonCard> {
                               const SizedBox(width: 6),
                             ] else ...[
                               Icon(Icons.add_circle_outline,
-                                  size: 13, color: Colors.grey.withValues(alpha: 0.5)),
+                                  size: 13,
+                                  color:
+                                      Colors.grey.withValues(alpha: 0.5)),
                               const SizedBox(width: 4),
                               Text(
                                 tr('priority'),
                                 style: TextStyle(
                                     fontSize: 11,
-                                    color: Colors.grey.withValues(alpha: 0.5)),
+                                    color:
+                                        Colors.grey.withValues(alpha: 0.5)),
                               ),
                               const SizedBox(width: 6),
                             ],
@@ -433,6 +440,17 @@ class _PersonCardState extends State<_PersonCard> {
                       style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.w600),
                     ),
+                    const SizedBox(height: 2),
+                    // Connections count
+                    if (connCount > 0)
+                      Text(
+                        '$connCount ${tr('connections_count')}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.primary
+                              .withValues(alpha: 0.8),
+                        ),
+                      ),
                     if (person.tags.isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Wrap(
@@ -441,7 +459,8 @@ class _PersonCardState extends State<_PersonCard> {
                         children: person.tags
                             .map((t) => Chip(
                                   label: Text(t,
-                                      style: const TextStyle(fontSize: 11)),
+                                      style:
+                                          const TextStyle(fontSize: 11)),
                                   visualDensity: VisualDensity.compact,
                                   materialTapTargetSize:
                                       MaterialTapTargetSize.shrinkWrap,
@@ -455,8 +474,8 @@ class _PersonCardState extends State<_PersonCard> {
                       for (final hit in widget.hits.take(2)) ...[
                         Text(
                           hit.location,
-                          style:
-                              const TextStyle(fontSize: 10, color: Colors.grey),
+                          style: const TextStyle(
+                              fontSize: 10, color: Colors.grey),
                         ),
                         if (widget.query != null)
                           _HighlightText(

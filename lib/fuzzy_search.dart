@@ -54,7 +54,7 @@ class FuzzySearch {
 }
 
 // ============================================================================
-// SEARCH HIT — carries where the match was found and the matched snippet
+// SEARCH HIT
 // ============================================================================
 
 class SearchHit {
@@ -67,7 +67,7 @@ List<SearchHit> findPersonHits(Person p, String query) {
   final q = query.toLowerCase().trim();
   if (q.isEmpty) return [];
 
-  String _snip(String text) {
+  String snip(String text) {
     final lower = text.toLowerCase();
     final idx = lower.indexOf(q);
     if (idx >= 0) {
@@ -78,6 +78,7 @@ List<SearchHit> findPersonHits(Person p, String query) {
     return text.length > 60 ? '${text.substring(0, 57)}…' : text;
   }
 
+  // Name matches are already visible on the card
   if (FuzzySearch.matches(q, p.name) ||
       FuzzySearch.matches(q, p.surname) ||
       FuzzySearch.matches(q, p.patronymic)) {
@@ -86,15 +87,17 @@ List<SearchHit> findPersonHits(Person p, String query) {
 
   final hits = <SearchHit>[];
 
+  // Tags
   for (final t in p.tags) {
     if (FuzzySearch.matches(q, t)) {
       hits.add(SearchHit(location: tr('tags'), snippet: t));
     }
   }
 
+  // Categories & key-values
   for (final c in p.categories) {
     if (FuzzySearch.matches(q, c.name)) {
-      hits.add(SearchHit(location: tr('connections'), snippet: c.name));
+      hits.add(SearchHit(location: tr('info'), snippet: c.name));
     }
     for (final kv in c.entries) {
       if (FuzzySearch.matches(q, kv.key)) {
@@ -103,22 +106,26 @@ List<SearchHit> findPersonHits(Person p, String query) {
       if (kv.value.isNotEmpty && FuzzySearch.matches(q, kv.value)) {
         hits.add(SearchHit(
           location: '${c.name}${kv.key.isNotEmpty ? " → ${kv.key}" : ""}',
-          snippet: _snip(kv.value),
+          snippet: snip(kv.value),
         ));
       }
     }
   }
 
+  // Notes
   if (p.notes.isNotEmpty && FuzzySearch.matches(q, p.notes)) {
-    hits.add(SearchHit(location: tr('notes'), snippet: _snip(p.notes)));
+    hits.add(SearchHit(location: tr('notes'), snippet: snip(p.notes)));
   }
 
+  // Evidence
   for (final ev in p.evidence) {
     if (ev.description.isNotEmpty && FuzzySearch.matches(q, ev.description)) {
-      hits.add(SearchHit(location: tr('evidence'), snippet: _snip(ev.description)));
+      hits.add(SearchHit(
+          location: tr('evidence'), snippet: snip(ev.description)));
     }
   }
 
+  // Connections
   for (final conn in p.connections) {
     for (final r in conn.reasons) {
       if (FuzzySearch.matches(q, r)) {

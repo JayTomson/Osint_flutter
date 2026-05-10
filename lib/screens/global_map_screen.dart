@@ -38,7 +38,7 @@ class SingleMarkerMapScreen extends StatelessWidget {
         ],
       ),
       body: FlutterMap(
-        options: MapOptions(initialCenter: point, initialZoom: 14),
+        options: MapOptions(initialCenter: point, initialZoom: 16),
         children: [
           TileLayer(
             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -47,8 +47,10 @@ class SingleMarkerMapScreen extends StatelessWidget {
           MarkerLayer(markers: [
             Marker(
               point: point,
-              width: 60,
-              height: 60,
+              width: 48,
+              height: 48,
+              // bottomCenter → острие иконки точно на координате
+              alignment: Alignment.bottomCenter,
               child: const Icon(Icons.location_on,
                   color: Colors.red, size: 48),
             ),
@@ -99,7 +101,7 @@ class _GlobalMapScreenState extends State<GlobalMapScreen> {
   void _fitAll(List<({LatLng pt, String label, String personName})> markers) {
     if (markers.isEmpty) return;
     if (markers.length == 1) {
-      _mapController.move(markers.first.pt, 13);
+      _mapController.move(markers.first.pt, 14);
       return;
     }
     double minLat = markers.first.pt.latitude;
@@ -113,7 +115,7 @@ class _GlobalMapScreenState extends State<GlobalMapScreen> {
       if (m.pt.longitude > maxLng) maxLng = m.pt.longitude;
     }
     final center = LatLng((minLat + maxLat) / 2, (minLng + maxLng) / 2);
-    _mapController.move(center, 9);
+    _mapController.move(center, 10);
   }
 
   Future<void> _exportPng() async {
@@ -172,7 +174,7 @@ class _GlobalMapScreenState extends State<GlobalMapScreen> {
                 mapController: _mapController,
                 options: MapOptions(
                   initialCenter: markers.first.pt,
-                  initialZoom: markers.length == 1 ? 13 : 7,
+                  initialZoom: markers.length == 1 ? 14 : 7,
                   onMapReady: () => _fitAll(markers),
                 ),
                 children: [
@@ -186,9 +188,10 @@ class _GlobalMapScreenState extends State<GlobalMapScreen> {
                       for (final m in markers)
                         Marker(
                           point: m.pt,
-                          width: 180,
-                          height: 70,
-                          alignment: Alignment.topCenter,
+                          width: 160,
+                          height: 64,
+                          // bottomCenter → острие иконки точно на координате
+                          alignment: Alignment.bottomCenter,
                           child: _GlobalMarker(
                             label: m.label,
                             personName: m.personName,
@@ -213,7 +216,6 @@ class _GlobalMarker extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.location_on, color: Colors.deepOrange, size: 34),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
@@ -243,6 +245,7 @@ class _GlobalMarker extends StatelessWidget {
             ],
           ),
         ),
+        const Icon(Icons.location_on, color: Colors.deepOrange, size: 34),
       ],
     );
   }

@@ -38,6 +38,10 @@ class _InfoTabState extends State<_InfoTab> {
             itemBuilder: (context, i) => _CategoryCard(
               key: ValueKey(p.categories[i].id),
               category: p.categories[i],
+              onDelete: () async {
+                setState(() => p.categories.removeAt(i));
+                await widget.onChange();
+              },
               onChange: () async {
                 setState(() {});
                 await widget.onChange();
@@ -90,9 +94,13 @@ class _InfoTabState extends State<_InfoTab> {
 
 class _CategoryCard extends StatefulWidget {
   final CategoryBlock category;
+  final Future<void> Function() onDelete;
   final Future<void> Function() onChange;
   const _CategoryCard(
-      {super.key, required this.category, required this.onChange});
+      {super.key,
+      required this.category,
+      required this.onDelete,
+      required this.onChange});
   @override
   State<_CategoryCard> createState() => _CategoryCardState();
 }
@@ -129,13 +137,12 @@ class _CategoryCardState extends State<_CategoryCard> {
                   onPressed: _renameCategory,
                 ),
                 IconButton(
-                  icon:
-                      const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                  icon: const Icon(Icons.delete_outline,
+                      size: 18, color: Colors.red),
                   onPressed: () async {
                     final ok = await showDeleteDialog(context);
-                    if (ok == true && mounted) {
-                      // Category deletion is handled in parent's state
-                      // We need a reference to the person's list; use callback pattern
+                    if (ok == true) {
+                      await widget.onDelete();
                     }
                   },
                 ),

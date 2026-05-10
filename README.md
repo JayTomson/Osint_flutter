@@ -106,9 +106,3 @@
 > **EN:** The author of this application bears **no responsibility** for how it is used, what data is collected, processed, or stored with its help, or against whom it is applied. All use is carried out **solely at the discretion and responsibility of the end user**.
 >
 > Users are required to comply with the **laws of their country**: data protection laws, privacy laws, laws on intelligence and investigative activities, and any other applicable regulations. Illegal use of the application for surveillance, data collection without consent, or any other unlawful purpose is prosecuted by law.
-
----
-
-## Лицензия
-
-Указывается автором репозитория. По умолчанию все права защищены.
